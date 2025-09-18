@@ -9,7 +9,7 @@ ENVIRONMENT = config('ENVIRONMENT', default="production")
 SECRET_KEY = config('SECRET_KEY')
 DEBUG = True
 
-ALLOWED_HOSTS = ['render-tune-cycle.onrender.com']
+ALLOWED_HOSTS = ['render-tune-cycle-89yn.onrender.com']
 
 # KEEP these apps - minimal for API + admin
 INSTALLED_APPS = [
