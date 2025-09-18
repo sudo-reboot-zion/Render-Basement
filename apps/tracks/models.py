@@ -17,11 +17,6 @@ import tempfile
 User = get_user_model()
 
 
-    """Generate upload path for cover images"""
-    ext = filename.split('.')[-1]
-    filename = f"cover_{uuid.uuid4()}.{ext}"
-    return f'covers/{instance.artist.username}/{filename}'
-
 
 class Genre(models.Model):
     """Music genres for categorization"""
