@@ -1,12 +1,8 @@
-# settings.py - Complete Cloudinary configuration
-
 import os
 from pathlib import Path
 from decouple import config
 from datetime import timedelta
 import cloudinary
-import cloudinary.uploader
-import cloudinary.api
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 ENVIRONMENT = config('ENVIRONMENT', default="production")
@@ -16,7 +12,6 @@ DEBUG = True
 
 ALLOWED_HOSTS = ['render-tune-cycle-89yn.onrender.com', 'localhost', '127.0.0.1']
 
-# INSTALLED_APPS (your existing configuration is correct)
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -32,11 +27,9 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
     'cloudinary',
-    'cloudinary_storage',  # Add this for better integration
     'django_filters'
 ]
 
-# MIDDLEWARE (your existing is correct)
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'corsheaders.middleware.CorsMiddleware',
@@ -48,7 +41,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-# Database configuration (your existing is correct)
+# Database configuration
 if ENVIRONMENT == 'development':
     DATABASES = {
         'default': {
@@ -66,38 +59,24 @@ else:
         'default': dj_database_url.parse(config('DATABASE_URL'))
     }
 
-# Cloudinary configuration - ENHANCED
+# Cloudinary configuration - SINGLE, CLEAN CONFIG
 cloudinary.config(
-    cloudinary_url=config("CLOUDINARY_URL"),
-    secure=True  # Always use HTTPS
+    cloud_name='dnbu2zyuo',
+    api_key=config('CLOUDINARY_API_KEY'),
+    api_secret=config('CLOUDINARY_API_SECRET'),
+    secure=True
 )
-
-# Alternative explicit configuration (use if CLOUDINARY_URL doesn't work)
-# cloudinary.config(
-#     cloud_name=config('CLOUDINARY_CLOUD_NAME'),
-#     api_key=config('CLOUDINARY_API_KEY'),
-#     api_secret=config('CLOUDINARY_API_SECRET'),
-#     secure=True
-# )
 
 # File upload settings
 FILE_UPLOAD_MAX_MEMORY_SIZE = 52428800  # 50MB
 DATA_UPLOAD_MAX_MEMORY_SIZE = 52428800  # 50MB
 
-# Static files configuration (minimal for admin)
+# Static files
 STATIC_URL = '/static/'
 if ENVIRONMENT == 'production':
     STATIC_ROOT = BASE_DIR / 'staticfiles'
 
-# Media files - these are now handled by Cloudinary
-MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
-
-# Optional: Use Cloudinary for static files too (uncomment if needed)
-# STATICFILES_STORAGE = 'cloudinary_storage.storage.StaticHashedCloudinaryStorage'
-# DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
-
-# CORS configuration (your existing is correct)
+# CORS configuration
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000", 
@@ -105,7 +84,21 @@ CORS_ALLOWED_ORIGINS = [
 ]
 CORS_ALLOW_CREDENTIALS = True
 
-# Rest of your settings remain the same...
+# JWT settings
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    'ROTATE_REFRESH_TOKENS': True,
+}
+
+# DRF settings
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ),
+    'DEFAULT_FILTER_BACKENDS': ['django_filters.rest_framework.DjangoFilterBackend']
+}
+
 ROOT_URLCONF = 'server.urls'
 
 TEMPLATES = [
@@ -124,21 +117,6 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'server.wsgi.application'
-
-# JWT settings
-SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
-    'ROTATE_REFRESH_TOKENS': True,
-}
-
-# DRF settings
-REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
-    ),
-    'DEFAULT_FILTER_BACKENDS': ['django_filters.rest_framework.DjangoFilterBackend']
-}
 
 # Standard Django settings
 LANGUAGE_CODE = 'en-us'
