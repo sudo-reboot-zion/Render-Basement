@@ -114,9 +114,10 @@ class Track(models.Model):
 
 
     audio_file = CloudinaryField(
-        'raw',  # 'raw' for audio files, 'image' for images
+        'raw',
         resource_type='raw',
         folder='tracks/audio',
+        allowed_formats=['mp3', 'wav', 'flac', 'm4a'],
         help_text="Main audio file (MP3, WAV, FLAC)"
     )
     
@@ -126,17 +127,19 @@ class Track(models.Model):
         folder='tracks/previews',
         blank=True,
         null=True,
+        allowed_formats=['mp3'],
         help_text="30-second preview (auto-generated if not provided)"
     )
     
     cover_image = CloudinaryField(
         'image',
+        resource_type='image',  # Explicitly set for images
         folder='tracks/covers',
         blank=True,
         null=True,
+        allowed_formats=['jpg', 'png', 'jpeg', 'webp'],
         transformation=[
-            {'width': 800, 'height': 800, 'crop': 'fill'},
-            {'quality': 'auto:good'}
+            {'width': 800, 'height': 800, 'crop': 'fill', 'quality': 'auto:good'}
         ],
         help_text="Track cover art"
     )
