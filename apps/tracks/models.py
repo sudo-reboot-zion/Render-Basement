@@ -10,12 +10,31 @@ from mutagen.flac import FLAC
 from django.core.files.base import ContentFile
 from pydub import AudioSegment
 from pydub.utils import make_chunks
-from cloudinary.models import CloudinaryField 
 import tempfile
 
 
 User = get_user_model()
 
+
+def track_upload_path(instance, filename):
+    """Generate upload path for track files"""
+    ext = filename.split('.')[-1]
+    filename = f"{uuid.uuid4()}.{ext}"
+    return f'tracks/{instance.artist.username}/{filename}'
+
+
+def preview_upload_path(instance, filename):
+    """Generate upload path for preview files"""
+    ext = filename.split('.')[-1]
+    filename = f"preview_{uuid.uuid4()}.{ext}"
+    return f'previews/{instance.artist.username}/{filename}'
+
+
+def cover_upload_path(instance, filename):
+    """Generate upload path for cover images"""
+    ext = filename.split('.')[-1]
+    filename = f"cover_{uuid.uuid4()}.{ext}"
+    return f'covers/{instance.artist.username}/{filename}'
 
 
 class Genre(models.Model):
@@ -112,35 +131,21 @@ class Track(models.Model):
     artist = models.ForeignKey(User, on_delete=models.CASCADE, related_name='tracks')
     description = models.TextField(max_length=1000, blank=True)
 
-
-    audio_file = CloudinaryField(
-        'raw',
-        resource_type='raw',
-        folder='tracks/audio',
-        allowed_formats=['mp3', 'wav', 'flac', 'm4a'],
+    # Audio Files
+    audio_file = models.FileField(
+        upload_to=track_upload_path,
         help_text="Main audio file (MP3, WAV, FLAC)"
     )
-    
-    preview_file = CloudinaryField(
-        'raw',
-        resource_type='raw', 
-        folder='tracks/previews',
+    preview_file = models.FileField(
+        upload_to=preview_upload_path,
         blank=True,
         null=True,
-        allowed_formats=['mp3'],
         help_text="30-second preview (auto-generated if not provided)"
     )
-    
-    cover_image = CloudinaryField(
-        'image',
-        resource_type='image',  # Explicitly set for images
-        folder='tracks/covers',
+    cover_image = models.ImageField(
+        upload_to=cover_upload_path,
         blank=True,
         null=True,
-        allowed_formats=['jpg', 'png', 'jpeg', 'webp'],
-        transformation=[
-            {'width': 800, 'height': 800, 'crop': 'fill', 'quality': 'auto:good'}
-        ],
         help_text="Track cover art"
     )
 
@@ -207,74 +212,81 @@ class Track(models.Model):
         return f"{self.title} by {self.artist.username}"
 
     def save(self, *args, **kwargs):
-        """Simple save method for CloudinaryField"""
+        """Ovrride save to extract metadata and generate preview"""
+        is_new = not self.pk
+
+        """Override save to extract audio metadata"""
+        if not self.pk or 'audio_file' in kwargs.get('update_fields', []):
+            self._extract_audio_metadata()
         super().save(*args, **kwargs)
 
+        if is_new or not self.preview_file:
+            self._generate_preview()
+            super().save(update_fields=['preview_file'])
 
+    def _generate_preview(self):
+        if not self.audio_file:
+            return
 
-    # def _generate_preview(self):
-    #     if not self.audio_file:
-    #         return
+        try:
+            # Load the audio file
+            audio = AudioSegment.from_file(self.audio_file.path)
 
-    #     try:
-    #         # Load the audio file
-    #         audio = AudioSegment.from_file(self.audio_file.path)
+            # Calculate preview start time (middle of track or beginning)
+            duration_ms = len(audio)
+            preview_duration_ms = 30 * 1000  # 30 seconds in milliseconds
 
-    #         # Calculate preview start time (middle of track or beginning)
-    #         duration_ms = len(audio)
-    #         preview_duration_ms = 30 * 1000  # 30 seconds in milliseconds
+            if duration_ms > preview_duration_ms:
+                # Start preview from 1/4 into the track (usually where the good part is)
+                start_time = duration_ms // 4
+                preview = audio[start_time:start_time + preview_duration_ms]
+            else:
+                # If track is shorter than 30s, use the whole track
+                preview = audio
 
-    #         if duration_ms > preview_duration_ms:
-    #             # Start preview from 1/4 into the track (usually where the good part is)
-    #             start_time = duration_ms // 4
-    #             preview = audio[start_time:start_time + preview_duration_ms]
-    #         else:
-    #             # If track is shorter than 30s, use the whole track
-    #             preview = audio
+            # Export preview to temporary file
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as temp_file:
+                preview.export(temp_file.name, format="mp3", bitrate="128k")
 
-    #         # Export preview to temporary file
-    #         with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as temp_file:
-    #             preview.export(temp_file.name, format="mp3", bitrate="128k")
+                # Read the temporary file and save to preview_file field
+                with open(temp_file.name, 'rb') as f:
+                    preview_content = f.read()
 
-    #             # Read the temporary file and save to preview_file field
-    #             with open(temp_file.name, 'rb') as f:
-    #                 preview_content = f.read()
+                preview_filename = f"preview_{self.public_id}.mp3"
+                self.preview_file.save(
+                    preview_filename,
+                    ContentFile(preview_content),
+                    save=False  # Don't save the model again
+                )
 
-    #             preview_filename = f"preview_{self.public_id}.mp3"
-    #             self.preview_file.save(
-    #                 preview_filename,
-    #                 ContentFile(preview_content),
-    #                 save=False  # Don't save the model again
-    #             )
+                # Clean up temporary file
+                os.unlink(temp_file.name)
 
-    #             # Clean up temporary file
-    #             os.unlink(temp_file.name)
+        except Exception as e:
+            print(f"Error generating preview for {self.title}: {e}")
 
-    #     except Exception as e:
-    #         print(f"Error generating preview for {self.title}: {e}")
+    def _extract_audio_metadata(self):
+        """Extract metadata from uploaded audio file"""
+        if not self.audio_file:
+            return
 
-    # def _extract_audio_metadata(self):
-    #     """Extract metadata from uploaded audio file"""
-    #     if not self.audio_file:
-    #         return
+        try:
+            # Try with pydub first (more reliable)
+            audio = AudioSegment.from_file(self.audio_file.path)
+            self.duration = int(len(audio) / 1000)  # Convert ms to seconds
+            self.file_size = self.audio_file.size
 
-    #     try:
-    #         # Try with pydub first (more reliable)
-    #         audio = AudioSegment.from_file(self.audio_file.path)
-    #         self.duration = int(len(audio) / 1000)  # Convert ms to seconds
-    #         self.file_size = self.audio_file.size
+            # Try to get more detailed info with mutagen
+            audio_file = MutagenFile(self.audio_file.path)
+            if audio_file is not None:
+                if isinstance(audio_file, (MP3, MP4)):
+                    if hasattr(audio_file.info, 'bitrate'):
+                        self.bitrate = audio_file.info.bitrate
+                    if hasattr(audio_file.info, 'sample_rate'):
+                        self.sample_rate = audio_file.info.sample_rate
 
-    #         # Try to get more detailed info with mutagen
-    #         audio_file = MutagenFile(self.audio_file.path)
-    #         if audio_file is not None:
-    #             if isinstance(audio_file, (MP3, MP4)):
-    #                 if hasattr(audio_file.info, 'bitrate'):
-    #                     self.bitrate = audio_file.info.bitrate
-    #                 if hasattr(audio_file.info, 'sample_rate'):
-    #                     self.sample_rate = audio_file.info.sample_rate
-
-    #     except Exception as e:
-    #         print(f"Error extracting metadata for {self.title}: {e}")
+        except Exception as e:
+            print(f"Error extracting metadata for {self.title}: {e}")
 
     @property
     def duration_formatted(self):
